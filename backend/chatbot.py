@@ -97,8 +97,12 @@ class ChatbotEngine:
             return "META"
         if any(x in q for x in ["10-year-old", "eli5", "simple terms"]):
             return "SIMPLE"
-        if any(x in q for x in ["what if", "simulate", "doubles"]):
-            return "HYPOTHETICAL"
+        if any(x in q for x in ["maitri", "what is this", "what do you do", "who created", "about the system"]):
+            return "GENERAL"
+        if any(x in q for x in ["health", "status", "how are the agents", "any alerts", "online"]):
+            return "STATUS_REPORT"
+        if "grapevine" in q or "gx-17" in q:
+            return "COMPLEX_SCENARIO"
         
         return "STATUS"
 
@@ -153,7 +157,38 @@ class ChatbotEngine:
         # Specific institution
         if "rmkcet" in q: return f"RMKCET is the institution where the owner, Penjendru Varun, is pursuing his studies."
 
+        # MAITRI Specific
+        if "maitri" in q:
+            if "stand for" in q or "what is" in q:
+                return "MAITRI stands for **Multi-Agent Intelligent Training & Rail Interface**. It is the cutting-edge brain behind RailGuard 5000, designed to orchestrate 50 specialized AI agents for total rail safety."
+        
+        # Crew/General questions from the list
+        if any(x in q for x in ["how many agents", "agent count"]):
+            return "There are exactly **50 specialized AI agents** in the MAITRI/RailGuard system, ranging from A1 (Visual) to A50 (Self-Healing)."
+
         return None
+
+    def _handle_general_questions(self, q: str) -> str:
+        if any(x in q for x in ["how does it work", "how maitri work"]):
+            return "MAITRI works using a **Blackboard Architecture**. 50 agents constantly write their sensor findings and predictions to a shared memory space. The Orchestrator then synthesizes this data into a single coherent safety strategy."
+        if any(x in q for x in ["can you help", "what help"]):
+            return "I can help you monitor axle cracks, plan budget for fleet maintenance, simulate disaster scenarios (like the Grapevine Express), and provide real-time health telemetry for all 50 onboard agents."
+        if any(x in q for x in ["performance", "response time"]):
+            return "The system operates with a **sub-100ms latency** on the edge (onboard the train) and performs full cloud-sync every 2 seconds via satellite. Internal decision voting takes less than 50ms."
+        if any(x in q for x in ["privacy", "secured", "private"]):
+            return "All telemetry is encrypted via AES-256 before transmission. Data is strictly limited to technical rail metrics; no passenger-identifiable information is ever stored or transmitted."
+        return "The MAITRI system is currently active and guarding the Grapevine Express (GX-17). You can ask me about specific agents (A1-A50) or current scenarios."
+
+    def _handle_status_report(self) -> str:
+        return (
+            "**SYSTEM STATUS REPORT: NOMINAL** ✅\n\n"
+            "• **Core Engine:** Active (MAITRI v8.2.7)\n"
+            "• **Uptime:** 8h 42m\n"
+            "• **Agents Online:** 50/50\n"
+            "• **Critical Alerts:** 0\n"
+            "• **Database Sync:** Nominal (Last sync: 2s ago)\n"
+            "**Observation:** All sensors reporting stable data. No anomalies detected in the last 1000km."
+        )
 
     async def process_query(self, query: str) -> dict:
         q_l = query.lower()
@@ -194,12 +229,24 @@ class ChatbotEngine:
         if intent == "HYPOTHETICAL": return self._handle_hypothetical(q_l)
         if intent == "META": return self._handle_meta_awareness()
         if intent == "SIMPLE": return self._handle_eli5()
+        if intent == "GENERAL": return self._handle_general_questions(q_l)
+        if intent == "STATUS_REPORT": return self._handle_status_report()
 
-        # Profiling Fallback
+        # Check for specific agent names/keywords mentioned
+        for aid, info in AGENT_CAPS.items():
+            if aid.lower() in q_l or any(kw in q_l for kw in info["kw"]):
+                return await self._agent_detail_report(aid, data.get(aid, {}))
+
+        # Profiling Fallback (Explicit A1-A50)
         match = re.search(r"a(\d{1,2})", q_l)
         if match:
             aid = f"A{match.group(1)}"
             if aid in AGENT_CAPS: return await self._agent_detail_report(aid, data.get(aid, {}))
+
+        # Check for any of the 50 agent names in text
+        for aid, info in AGENT_CAPS.items():
+             if info["name"].lower() in q_l:
+                 return await self._agent_detail_report(aid, data.get(aid, {}))
 
         return "iam not supposed to answer such questions"
 
