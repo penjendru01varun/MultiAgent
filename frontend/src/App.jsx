@@ -57,7 +57,11 @@ function App() {
             if (!mountedRef.current) return
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
-            const ws = new WebSocket('ws://localhost:8000/ws/updates')
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const wsUrl = isLocal
+                ? 'ws://localhost:8000/ws/updates'
+                : 'wss://multiagent-backend-fm5f.onrender.com/ws/updates';
+            const ws = new WebSocket(wsUrl)
             wsRef.current = ws
 
             ws.onopen = () => {
