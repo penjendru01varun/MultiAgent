@@ -1,8 +1,3 @@
-"""
-RailGuard 5000 — Main FastAPI Application
-Bulletproof WebSocket server that NEVER closes client connections due to data errors.
-"""
-
 import asyncio
 import json
 import logging
@@ -12,7 +7,10 @@ import time
 import re
 
 # ── Path setup ──────────────────────────────────────────────
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Ensure we can import from the current directory regardless of how uvicorn is called
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,18 +24,24 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # ── Internal modules ─────────────────────────────────────────
 try:
-    from backend.blackboard import Blackboard
-    from backend.orchestrator import Orchestrator
-    from backend.all_agents import ALL_AGENTS
-    from backend.chatbot import ChatbotEngine
-except ImportError:
+    # Try local imports first (for Render running with Root Dir: backend)
+    import blackboard
+    import orchestrator
+    import all_agents
+    import chatbot
     from blackboard import Blackboard
     from orchestrator import Orchestrator
     from all_agents import ALL_AGENTS
     from chatbot import ChatbotEngine
+except ImportError:
+    # Fallback to package-style (for local development or different Root Dir)
+    from backend.blackboard import Blackboard
+    from backend.orchestrator import Orchestrator
+    from backend.all_agents import ALL_AGENTS
+    from backend.chatbot import ChatbotEngine
 
 # ── App setup ────────────────────────────────────────────────
-app = FastAPI(title="RailGuard 5000 API", version="2.0")
+app = FastAPI(title="RailGuard 5000 API", version="8.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,24 +52,27 @@ app.add_middleware(
 )
 
 # ── Global singletons ────────────────────────────────────────
-blackboard  = Blackboard()
+blackboard = Blackboard()
 orchestrator = Orchestrator(blackboard)
-chatbot     = ChatbotEngine(blackboard)
+chatbot = ChatbotEngine(blackboard)
 
 @app.get("/")
 async def root():
-    # Dynamic route listing for debugging
-    routes = []
-    for route in app.routes:
-        methods = getattr(route, "methods", ["WS"])
-        routes.append(f"{list(methods)} {route.path}")
-    
+    # Defensive route listing
+    route_list = []
+    try:
+        for r in app.routes:
+            m = list(getattr(r, "methods", ["WS/OTHER"]))
+            route_list.append(f"{m} {getattr(r, 'path', 'unknown')}")
+    except:
+        route_list = ["Could not list routes"]
+        
     return {
         "status": "online", 
-        "version": "8.2",
+        "version": "8.2.1",
         "timestamp": time.time(),
         "message": "RailGuard 5000 API is operational",
-        "registered_routes": routes
+        "registered_routes": route_list
     }
 
 # Register all 50 agents with the orchestrator
