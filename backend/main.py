@@ -1,24 +1,21 @@
-import os
-import sys
-
-# Extremely aggressive path fixing
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PARENT_DIR = os.path.dirname(CURRENT_DIR)
-sys.path.insert(0, CURRENT_DIR)
-sys.path.insert(0, PARENT_DIR)
-
 import asyncio
 import json
 import logging
-import time
+import sys
+import os
+import time as time_module  # Use an alias to avoid any shadowing
 import traceback
 
+# ── Logging Setup ──────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("RailGuard")
+
+# ── FastAPI ────────────────────────────────────────────────
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Initialize App EARLY
-app = FastAPI()
+app = FastAPI(title="RailGuard 5000 API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,16 +25,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Systems (Placeholders)
-blackboard = None
-orchestrator = None
-chatbot = None
-_INIT_ERR = None
+# ── Path & Import Fix ──────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
-def load_systems():
-    global blackboard, orchestrator, chatbot, _INIT_ERR
+# ── Global System Containers ────────────────────────────────
+# Using names that don't conflict with filenames
+CORE_BLACKBOARD = None
+CORE_ORCHESTRATOR = None
+CORE_CHATBOT = None
+INIT_STATUS = "PENDING"
+INIT_ERROR = None
+
+def boot_engine():
+    global CORE_BLACKBOARD, CORE_ORCHESTRATOR, CORE_CHATBOT, INIT_STATUS, INIT_ERROR
     try:
-        # Delayed Imports
+        # Import inside function to avoid top-level path issues
         try:
             from blackboard import Blackboard
             from orchestrator import Orchestrator
@@ -49,85 +53,107 @@ def load_systems():
             from backend.all_agents import ALL_AGENTS
             from backend.chatbot import ChatbotEngine
 
-        blackboard = Blackboard()
-        orchestrator = Orchestrator(blackboard)
-        chatbot = ChatbotEngine(blackboard)
+        CORE_BLACKBOARD = Blackboard()
+        CORE_ORCHESTRATOR = Orchestrator(CORE_BLACKBOARD)
+        CORE_CHATBOT = ChatbotEngine(CORE_BLACKBOARD)
 
         for agent in ALL_AGENTS:
-            orchestrator.register_agent(agent)
-        
-        return True
+            CORE_ORCHESTRATOR.register_agent(agent)
+            
+        INIT_STATUS = "SUCCESS"
+        logger.info("SYSTEM BOOT SEQUENCE COMPLETE")
     except Exception as e:
-        _INIT_ERR = f"LOAD ERROR: {str(e)}\n{traceback.format_exc()}"
-        return False
+        INIT_STATUS = "FAILED"
+        INIT_ERROR = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"BOOT ERROR: {INIT_ERROR}")
 
-# Run load
-_LOADED = load_systems()
+# Run boot
+boot_engine()
 
-import time
+# ── Routes ──────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
-    now = 0
+    # Get time safely
     try:
-        now = time.time()
-    except:
-        pass
+        current_time = time_module.time()
+    except Exception:
+        current_time = 0
         
     return {
         "status": "online",
-        "version": "8.2.6",
-        "loaded": _LOADED,
-        "error": _INIT_ERR,
-        "timestamp": now,
-        "debug": {
-            "current_dir": CURRENT_DIR,
-            "sys_path": sys.path[:3]
+        "version": "8.2.7-LOCKED",
+        "boot_status": INIT_STATUS,
+        "boot_error": INIT_ERROR,
+        "telemetry": {
+            "time": current_time,
+            "agents": len(CORE_ORCHESTRATOR.agents) if CORE_ORCHESTRATOR else 0
         }
     }
 
 @app.post("/chat")
-async def chat(request: Request):
-    if not _LOADED:
-        return JSONResponse(status_code=500, content={"error": "System not loaded", "detail": _INIT_ERR})
-    data = await request.json()
-    query = data.get("query", "")
-    res = await chatbot.process_query(query)
-    return res
+async def chat_http(request: Request):
+    if INIT_STATUS != "SUCCESS":
+        return JSONResponse(status_code=500, content={"error": "Engine Not Booted", "detail": INIT_ERROR})
+    
+    try:
+        body = await request.json()
+        query = str(body.get("query", ""))
+        result = await CORE_CHATBOT.process_query(query)
+        return result
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
 
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
-    if not _LOADED:
-        await websocket.send_text(json.dumps({"error": "Init failed", "detail": _INIT_ERR}))
+    if INIT_STATUS != "SUCCESS":
+        await websocket.send_text(json.dumps({"type": "error", "message": "Engine not booted"}))
         await websocket.close()
         return
+
     try:
         while True:
             raw = await websocket.receive_text()
-            msg = json.loads(raw) if "{" in raw else {"query": raw}
-            query = msg.get("query", raw)
-            
-            selected = chatbot.select_agents(query)
-            await websocket.send_text(json.dumps({"type": "thinking", "active_agents": selected}))
+            try:
+                msg = json.loads(raw) if "{" in raw else {"query": raw}
+                query = str(msg.get("query", raw))
+            except Exception:
+                query = raw
+
+            if not query: continue
+
+            # Notify thinking
+            selected = CORE_CHATBOT.select_agents(query)
+            await websocket.send_text(json.dumps({
+                "type": "thinking",
+                "active_agents": selected,
+            }))
+
             await asyncio.sleep(0.5)
-            
-            result = await chatbot.process_query(query)
+
+            # Process & Send
+            result = await CORE_CHATBOT.process_query(query)
             result["type"] = "response"
             await websocket.send_text(json.dumps(result))
-    except:
+
+    except WebSocketDisconnect:
         pass
+    except Exception as e:
+        logger.error(f"WS CHAT ERROR: {e}")
 
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            if _LOADED:
-                await websocket.send_text(json.dumps({
-                    "blackboard": blackboard.get_status(),
-                    "health": blackboard.get_all_health()
-                }))
-            await asyncio.sleep(1)
-    except:
+            if INIT_STATUS == "SUCCESS":
+                payload = {
+                    "blackboard": CORE_BLACKBOARD.get_status(),
+                    "health": CORE_BLACKBOARD.get_all_health(),
+                    "agents": [{"id": a.agent_id, "status": a.status} for a in CORE_ORCHESTRATOR.agents]
+                }
+                await websocket.send_text(json.dumps(payload))
+            await asyncio.sleep(2)
+    except Exception:
         pass
