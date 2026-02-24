@@ -152,17 +152,24 @@ class ChatbotEngine:
         return sorted(scores, key=scores.get, reverse=True)[:10]
 
     def _handle_special_queries(self, q: str) -> Optional[str]:
-        q = q.lower().strip()
+        q_l = q.lower().strip()
         
-        # Greetings
-        if any(x in q for x in ["hi", "hello", "good morning", "good evening"]):
-            if "i am fine" in q or "iam fine" in q or "what about you" in q:
-                return "Thanks for asking!"
-            return "Hello, how are you?"
+        # Priority check: If query contains agent IDs (e.g., A21), do NOT handle as special/conversational
+        if re.search(r"\ba\d{1,2}\b", q_l):
+            return None
+
+        q_clean = re.sub(r'[^a-z\s]', '', q_l)
+        words = set(q_clean.split())
+        
+        # Greetings - Use word set to avoid matching "hi" inside "Which"
+        if any(x in words for x in ["hi", "hello", "hey", "hola", "good morning", "good evening"]):
+            if any(x in q_clean for x in ["i am fine", "iam fine", "what about you"]):
+                return "Thanks for asking! I am functioning at 100% capacity and ready to assist with RailGuard diagnostics."
+            return "Hello, how are you? I am MAITRI, your RailGuard 5000 Safety Orchestrator. How can I assist with system diagnostics or crisis management today?"
         
         # Farewell
-        if any(x in q for x in ["bye", "good night", "see you"]):
-            return "Goodbye! Stay safe on the tracks."
+        if any(x in words for x in ["bye", "goodnight", "see you"]):
+            return "Goodbye! Stay safe on the tracks. MAITRI shutdown sequence deferred; staying on standby."
 
         # Owner Details
         owner_keywords = ["owner", "developed", "creator", "mastermind", "varun", "penjendru"]
