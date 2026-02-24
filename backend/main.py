@@ -52,10 +52,16 @@ chatbot     = ChatbotEngine(blackboard)
 
 @app.get("/")
 async def root():
+    # Dynamic route listing for debugging
+    routes = []
+    for route in app.routes:
+        methods = getattr(route, "methods", ["WS"])
+        routes.append(f"{list(methods)} {route.path}")
+    
     return {
         "status": "online", 
         "message": "RailGuard 5000 API is operational",
-        "endpoints": ["/chat (POST)", "/ws/chat (WS)", "/ws/updates (WS)"]
+        "registered_routes": routes
     }
 
 # Register all 50 agents with the orchestrator
