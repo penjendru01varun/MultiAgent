@@ -157,3 +157,15 @@ async def ws_updates(websocket: WebSocket):
             await asyncio.sleep(2)
     except Exception:
         pass
+
+@app.on_event("startup")
+async def startup_event():
+    if INIT_STATUS == "SUCCESS":
+        logger.info("Sparking all 50 agents into life...")
+        await CORE_ORCHESTRATOR.start_all()
+        logger.info("All agents are now running in background.")
+
+# ── Entry point ──────────────────────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
