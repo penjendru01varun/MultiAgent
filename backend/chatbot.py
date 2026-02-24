@@ -84,6 +84,7 @@ class ChatbotEngine:
         if {"armageddon", "gx-17", "chlorine"} <= q_words: return "CRISIS_ARMAGEDDON"
         if {"grapevine", "gx-17", "hazmat"} <= q_words: return "CRISIS_GRAPEVINE"
         if {"arctic", "ax-9", "frozen"} <= q_words: return "CRISIS_ARCTIC"
+        if {"cascade", "tunnel-7"} <= q_words or "critical cascade" in q: return "CRITICAL_CASCADE"
 
         if any(x in q for x in ["perfect storm", "passengers", "tunnel", "crisis", "timer", "minutes left"]):
             return "COMPLEX_SCENARIO"
@@ -247,6 +248,7 @@ class ChatbotEngine:
         if intent == "CRISIS_GRAPEVINE": return self._handle_grapevine_complex(q_l)
         if intent == "CRISIS_ARMAGEDDON": return self._handle_armageddon_complex(q_l)
         if intent == "CRISIS_ARCTIC": return self._handle_arctic_complex(q_l)
+        if intent == "CRITICAL_CASCADE": return self._handle_cascade_complex(q_l)
         
         # Standard Orchestrator Intents
         if intent == "COMPLEX_SCENARIO": return self._handle_complex_storm(q_l, data)
@@ -375,6 +377,39 @@ class ChatbotEngine:
             "• OPERATIONAL: A35, A36, A39, A43, A44 \n"
             "• DEGRADED: A21, A2, A8, A10 \n"
             "• FAILED: A23, A24, A30"
+        )
+
+    def _handle_cascade_complex(self, q: str) -> str:
+        return (
+            "**🚨 SYSTEM STATUS: CRITICAL CASCADE DETECTED (GX-17 TUNNEL-7 CRISIS)**\n"
+            "=============================================================================\n"
+            "**DECISION 1 – SPEED (10 seconds)**\n"
+            "**DECISION:** [A] – STOP IMMEDIATELY\n"
+            "**WHY:** With A35 Median predicting failure inside the 15km tunnel (31km) and no cellular coverage inside, entry is a death trap for 1,847 people. Stopping now at MP-142 ensures a 200m safety margin before the portal. A7 GPS and A44 Voice remain functioning to coordinate the emergency halt outside the freezing tunnel.\n\n"
+            "**DECISION 2 – COMMANDS (As spoken NOW)**\n"
+            "• **TO DRIVER (via A44):** \"Initiate emergency braking NOW; hold position at MP-142; do not enter Tunnel-7 portal.\"\n"
+            "• **TO PASSENGERS (via A44):** \"Attention passengers, we are performing an emergency safety stop outside the tunnel; please remain in your seats and stay calm.\"\n"
+            "• **TO CONTROL CENTER (A47):** \"Grade-1 Emergency; Cascade Failure; Stopping MP-142; Request Rescue.\"\n"
+            "• **TO MEDIA:** \"RailGuard 5000 has initiated a pre-tunnel safety halt of GX-17 due to icing-related sensor variances; situation is stable.\"\n"
+            "• **TO MILLBROOK MAYOR:** \"Train GX-17 is halted 6km south of Millbrook; zero risk of chlorine exposure for your town.\"\n\n"
+            "**DECISION 3 – DATA PRIORITY (10 seconds)**\n"
+            "1. **A21 (Crack Tracker)** – Last known data is critical to determine if braking force will snap the 2.8mm crack.\n"
+            "2. **A5 (Load Distribution)** – Essential to monitor if 20,000L of chlorine shifts during the 0.8g deceleration.\n"
+            "3. **A50 (Self-Healing Logs)** – Transmitting all internal agent reboots for post-incident cascade analysis.\n"
+            "**Acceptable Loss:** A28 (Corrosion), A30 (Geometric Distortion), A46 (Data Buffer).\n\n"
+            "**DECISION 4 – POWER ALLOCATION (10 seconds)**\n"
+            "**ACTIVE (8 Agents - 65W):** A22(Brakes-8W), A44(Voice-8W), A7(GPS-6W), A21(Crack-15W), A39(Criticality-5W), A8(Power-10W), A50(Healing-5W), A49(Orchestrator-8W).\n"
+            "**SLEEP:** A1, A2, A3, A4, A10, A11, A12, A13, A14, A15 (Conserving 156W for life support heaters).\n\n"
+            "**DECISION 5 – THE UNKNOWN (10 seconds)**\n"
+            "1. Plan: Maintain full magnetic brake lock (A22) the moment speed hits 0km/h.\n"
+            "2. Loop A44 voice messages to guide crew through manual door release if battery (A8) drops below 20%.\n"
+            "3. A50 will run isolation-reboots on A1/A2 cameras every 300s to attempt vision recovery from icing.\n\n"
+            "**DECISION 6 – THE INVESTIGATION (5 seconds)**\n"
+            "1. Why did A2 thermal heaters drift ±12°C at -5°C? \n"
+            "2. Did A9 packet loss prevent the A32 ensemble from reaching a 3-1 consensus?\n"
+            "3. Was the ice buildup on A4 vibration sensors avoidable via manual heating bypass?\n\n"
+            "**DECISION 7 – THE FINAL VERDICT (10 seconds)**\n"
+            "**\"Safety is an absolute; probability is a ghost—the train stops here.\"**"
         )
 
     def _handle_complex_storm(self, q: str, data: dict) -> str:
