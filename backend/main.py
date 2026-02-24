@@ -6,42 +6,30 @@ import os
 import time
 import re
 
-# ── Path setup ──────────────────────────────────────────────
-# Ensure we can import from the current directory regardless of how uvicorn is called
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+# Standard logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RailGuard")
 
-# ── FastAPI ──────────────────────────────────────────────────
+# FastAPI Setup
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-# ── Internal modules ─────────────────────────────────────────
+# Force path for Render
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Simple imports
 try:
-    # Try local imports first (for Render running with Root Dir: backend)
-    import blackboard
-    import orchestrator
-    import all_agents
-    import chatbot
     from blackboard import Blackboard
     from orchestrator import Orchestrator
     from all_agents import ALL_AGENTS
     from chatbot import ChatbotEngine
 except ImportError:
-    # Fallback to package-style (for local development or different Root Dir)
     from backend.blackboard import Blackboard
     from backend.orchestrator import Orchestrator
     from backend.all_agents import ALL_AGENTS
     from backend.chatbot import ChatbotEngine
 
-# ── App setup ────────────────────────────────────────────────
-app = FastAPI(title="RailGuard 5000 API", version="8.2")
+app = FastAPI(title="RailGuard 5000 API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,140 +39,65 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Global singletons ────────────────────────────────────────
+# Global Systems
 blackboard = Blackboard()
 orchestrator = Orchestrator(blackboard)
 chatbot = ChatbotEngine(blackboard)
 
-@app.get("/")
-async def root():
-    # Defensive route listing
-    route_list = []
-    try:
-        for r in app.routes:
-            m = list(getattr(r, "methods", ["WS/OTHER"]))
-            route_list.append(f"{m} {getattr(r, 'path', 'unknown')}")
-    except:
-        route_list = ["Could not list routes"]
-        
-    return {
-        "status": "online", 
-        "version": "8.2.1",
-        "timestamp": time.time(),
-        "message": "RailGuard 5000 API is operational",
-        "registered_routes": route_list
-    }
-
-# Register all 50 agents with the orchestrator
+# Register agents
 for agent in ALL_AGENTS:
     orchestrator.register_agent(agent)
 
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "version": "8.2.2",
+        "timestamp": time.time(),
+        "agents_registered": len(orchestrator.agents)
+    }
 
-# ── Startup ──────────────────────────────────────────────────
-@app.on_event("startup")
-async def startup_event():
-    logger.info("RailGuard 5000 starting — launching 50 agents...")
-    await orchestrator.start_all()
-    logger.info("All agents launched. API ready.")
-
-
-# ── REST endpoint ─────────────────────────────────────────────
 @app.post("/chat")
 async def chat_http(body: dict):
-    """Simple HTTP chat endpoint for testing."""
-    query = str(body.get("query", ""))
-    if not query:
-        return {"error": "No query provided"}
-    result = await chatbot.process_query(query)
-    return result
+    query = body.get("query", "")
+    return await chatbot.process_query(query)
 
-
-# ── WebSocket: CHAT ──────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
-    logger.info("Chat WS client connected")
     try:
         while True:
             raw = await websocket.receive_text()
-            try:
-                msg = json.loads(raw)
-                query = str(msg.get("query", ""))
-            except Exception:
-                query = raw
-
-            if not query:
-                continue
-
-            # Phase 1 — notify frontend which agents are "thinking"
+            msg = json.loads(raw) if "{" in raw else {"query": raw}
+            query = msg.get("query", raw)
+            
             selected = chatbot.select_agents(query)
-            await websocket.send_text(json.dumps({
-                "type": "thinking",
-                "active_agents": selected,
-            }))
-
-            # Dramatic pause for cinematic effect
-            await asyncio.sleep(1.2)
-
-            # Phase 2 — full response
+            await websocket.send_text(json.dumps({"type": "thinking", "active_agents": selected}))
+            await asyncio.sleep(0.5)
+            
             result = await chatbot.process_query(query)
             result["type"] = "response"
             await websocket.send_text(json.dumps(result))
+    except:
+        pass
 
-    except WebSocketDisconnect:
-        logger.info("Chat WS client disconnected")
-    except Exception as e:
-        logger.error(f"Chat WS error: {e}")
-
-
-# ── WebSocket: SYSTEM UPDATES ────────────────────────────────
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket):
-    """
-    Streams live system status every second.
-    This loop NEVER breaks on data errors — it just logs and retries.
-    The only way this connection closes is if the client disconnects.
-    """
     await websocket.accept()
-    logger.info("Updates WS client connected")
-
     try:
         while True:
-            try:
-                # Build payload — all data was sanitized at write time
-                health_snapshot = blackboard.get_all_health()
-
-                payload = {
-                    "blackboard": blackboard.get_status(),
-                    "agents": [
-                        {
-                            "id":     a.agent_id,
-                            "name":   a.name,
-                            "status": a.status,
-                        }
-                        for a in orchestrator.agents
-                    ],
-                    "health": health_snapshot,
-                }
-
-                # json.dumps will NEVER fail here because blackboard
-                # sanitizes all data at write time
-                await websocket.send_text(json.dumps(payload))
-
-            except WebSocketDisconnect:
-                raise  # re-raise so the outer handler catches it
-            except Exception as e:
-                # Log the error but DO NOT break — keep the connection alive
-                logger.warning(f"Transient WS update error (skipping): {e}")
-
+            await websocket.send_text(json.dumps({
+                "blackboard": blackboard.get_status(),
+                "health": blackboard.get_all_health()
+            }))
             await asyncio.sleep(1)
+    except:
+        pass
 
-    except WebSocketDisconnect:
-        logger.info("Updates WS client disconnected normally")
-    except Exception as e:
-        logger.error(f"Updates WS fatal error: {e}")
-
-    logger.info("Updates WS handler exiting")
+# Skip startup auto-launching of all 50 agents for now to isolate the crash
+# @app.on_event("startup")
+# async def startup():
+#    await orchestrator.start_all()
 
 
 # ── Entry point ──────────────────────────────────────────────
