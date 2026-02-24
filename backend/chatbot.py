@@ -62,6 +62,15 @@ AGENT_CAPS = {
     "A50": {"name": "Self-Healing Monitor",      "kw": ["healing", "recovery", "health", "alive"]},
 }
 
+# ── owner details ──────────────────────────────────────────
+OWNER_INFO = {
+    "name": "Penjendru Varun",
+    "phone": "+918838149983",
+    "email": "penjcs127@rmkcet.ac.in",
+    "college": "RMKCET",
+    "department": "B.E CSE"
+}
+
 class ChatbotEngine:
     def __init__(self, blackboard):
         self.blackboard = blackboard
@@ -118,8 +127,46 @@ class ChatbotEngine:
                 
         return sorted(scores, key=scores.get, reverse=True)[:10]
 
+    def _handle_special_queries(self, q: str) -> Optional[str]:
+        q = q.lower().strip()
+        
+        # Greetings
+        if any(x in q for x in ["hi", "hello", "good morning", "good evening"]):
+            if "i am fine" in q or "iam fine" in q or "what about you" in q:
+                return "Thanks for asking!"
+            return "Hello, how are you?"
+        
+        # Farewell
+        if any(x in q for x in ["bye", "good night", "see you"]):
+            return "Goodbye! Stay safe on the tracks."
+
+        # Owner Details
+        if "owner" in q or "who developed" in q or "who is the owner" in q:
+            if "phone" in q: return f"The owner's phone number is {OWNER_INFO['phone']}."
+            if "email" in q or "id" in q: return f"The owner's email ID is {OWNER_INFO['email']}."
+            if "college" in q: return f"The owner studies at {OWNER_INFO['college']}."
+            if "dept" in q or "department" in q or "study" in q: return f"The owner is studying {OWNER_INFO['department']}."
+            return f"The owner and developer of this system is {OWNER_INFO['name']}."
+        
+        # Specific owner keywords
+        if "varun" in q: return f"Yes, Penjendru Varun is the mastermind behind RailGuard 5000."
+        if "rmkcet" in q: return f"RMKCET is the institution where the owner, Penjendru Varun, is pursuing his studies."
+
+        return None
+
     async def process_query(self, query: str) -> dict:
-        intent = self.classify_intent(query.lower())
+        q_l = query.lower()
+        
+        # Check for special/personal queries first
+        special_resp = self._handle_special_queries(q_l)
+        if special_resp:
+            return {
+                "query": query, "intent": "CONVERSATIONAL", "response": special_resp,
+                "active_agents": [{"id": "HMI", "name": "Human Interface"}],
+                "confidence": 1.0,
+            }
+
+        intent = self.classify_intent(q_l)
         selected = self.select_agents(query, intent)
         
         agent_data = {}
@@ -153,7 +200,7 @@ class ChatbotEngine:
             aid = f"A{match.group(1)}"
             if aid in AGENT_CAPS: return await self._agent_detail_report(aid, data.get(aid, {}))
 
-        return "System Status: Nominal. Specify a scenario (e.g. 'Budget allocation' or 'Perfect Storm') for a deep-dive analysis."
+        return "I am not supposed to answer such questions. Please ask about the 50 agents or the system owner."
 
     def _handle_complex_storm(self, q: str, data: dict) -> str:
         passengers = "840" if "840" in q else "the current"
