@@ -23,10 +23,16 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # ── Internal modules ─────────────────────────────────────────
-from backend.blackboard import Blackboard
-from backend.orchestrator import Orchestrator
-from backend.all_agents import ALL_AGENTS
-from backend.chatbot import ChatbotEngine
+try:
+    from backend.blackboard import Blackboard
+    from backend.orchestrator import Orchestrator
+    from backend.all_agents import ALL_AGENTS
+    from backend.chatbot import ChatbotEngine
+except ImportError:
+    from blackboard import Blackboard
+    from orchestrator import Orchestrator
+    from all_agents import ALL_AGENTS
+    from chatbot import ChatbotEngine
 
 # ── App setup ────────────────────────────────────────────────
 app = FastAPI(title="RailGuard 5000 API", version="2.0")
@@ -43,6 +49,14 @@ app.add_middleware(
 blackboard  = Blackboard()
 orchestrator = Orchestrator(blackboard)
 chatbot     = ChatbotEngine(blackboard)
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online", 
+        "message": "RailGuard 5000 API is operational",
+        "endpoints": ["/chat (POST)", "/ws/chat (WS)", "/ws/updates (WS)"]
+    }
 
 # Register all 50 agents with the orchestrator
 for agent in ALL_AGENTS:
