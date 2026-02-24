@@ -187,7 +187,10 @@ export default function ChatInterface({ onClose }) {
         if (!mountedRef.current) return
         if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-        const ws = new WebSocket('ws://localhost:8000/ws/chat')
+        const wsUrl = window.location.hostname === 'localhost'
+            ? 'ws://localhost:8000/ws/chat'
+            : 'wss://multiagent-backend-fm5f.onrender.com/ws/chat';
+        const ws = new WebSocket(wsUrl)
         wsRef.current = ws
 
         ws.onopen = () => {
