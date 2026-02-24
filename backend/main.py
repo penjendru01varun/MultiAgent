@@ -60,6 +60,8 @@ async def root():
     
     return {
         "status": "online", 
+        "version": "8.2",
+        "timestamp": time.time(),
         "message": "RailGuard 5000 API is operational",
         "registered_routes": routes
     }
