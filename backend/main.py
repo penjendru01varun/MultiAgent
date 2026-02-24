@@ -64,17 +64,25 @@ def load_systems():
 # Run load
 _LOADED = load_systems()
 
+import time
+
 @app.get("/")
 async def root():
+    now = 0
+    try:
+        now = time.time()
+    except:
+        pass
+        
     return {
         "status": "online",
-        "version": "8.2.5",
+        "version": "8.2.6",
         "loaded": _LOADED,
         "error": _INIT_ERR,
+        "timestamp": now,
         "debug": {
             "current_dir": CURRENT_DIR,
-            "sys_path": sys.path[:3],
-            "files": os.listdir(CURRENT_DIR)
+            "sys_path": sys.path[:3]
         }
     }
 
