@@ -156,7 +156,7 @@ const SUGGESTED = [
 export default function ChatInterface({ onClose }) {
     const WELCOME_MSG = {
         id: 1, sender: 'system', timestamp: Date.now(),
-        text: "Welcome, Engineer. I am the RAILGUARD CONCIERGE — v8.0 Decision Engine active. I orchestrate 50 specialized AI agents. \n\nWhat scenario would you like to analyze?",
+        text: "Welcome, Engineer. I am the RAILGUARD CONCIERGE — v8.2.7 Decision Engine active. I orchestrate 50 specialized AI agents. \n\nWhat scenario would you like to analyze?",
     }
     const [messages, setMessages] = useState([WELCOME_MSG])
     const [input, setInput] = useState('')
@@ -187,14 +187,20 @@ export default function ChatInterface({ onClose }) {
         if (!mountedRef.current) return
         if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isLocal = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.port !== '';
+
         const wsUrl = isLocal
             ? 'ws://localhost:8000/ws/chat'
             : 'wss://multiagent-backend-fm5f.onrender.com/ws/chat';
+
+        console.log('[RailGuard] Connecting to:', wsUrl);
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
 
         ws.onopen = () => {
+            console.log('[RailGuard] Chat Connected');
             if (!mountedRef.current) { ws.close(); return }
             setWsReady(true)
             clearTimeout(reconnectRef.current)

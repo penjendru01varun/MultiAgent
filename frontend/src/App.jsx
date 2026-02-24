@@ -57,15 +57,20 @@ function App() {
             if (!mountedRef.current) return
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
-            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const isLocal = window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1' ||
+                window.location.port !== '';
+
             const wsUrl = isLocal
                 ? 'ws://localhost:8000/ws/updates'
                 : 'wss://multiagent-backend-fm5f.onrender.com/ws/updates';
+
+            console.log('[RailGuard] Updates Connecting to:', wsUrl);
             const ws = new WebSocket(wsUrl)
             wsRef.current = ws
 
             ws.onopen = () => {
-                console.log('[RailGuard] WS connected')
+                console.log('[RailGuard] Updates Connected');
                 clearTimeout(reconnectRef.current)
             }
 
