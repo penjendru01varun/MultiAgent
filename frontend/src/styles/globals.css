@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,7 +16,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #060a0f;
-  background-image: 
+  background-image:
     radial-gradient(circle at 50% 50%, rgba(0, 243, 255, 0.05) 0%, transparent 50%),
     linear-gradient(rgba(0, 243, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 243, 255, 0.02) 1px, transparent 1px);
@@ -23,6 +25,14 @@ body {
 
 .mono {
   font-family: 'JetBrains Mono', monospace;
+}
+
+.font-orbitron {
+  font-family: 'Orbitron', sans-serif;
+}
+
+.font-space {
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .glass {
@@ -54,13 +64,16 @@ body {
 ::-webkit-scrollbar {
   width: 4px;
 }
+
 ::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.1);
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 243, 255, 0.3);
   border-radius: 2px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 243, 255, 0.5);
 }

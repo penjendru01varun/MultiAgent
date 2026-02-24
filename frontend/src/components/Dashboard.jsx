@@ -1,204 +1,452 @@
-import { useState } from 'react'
-import { Layout, Activity, Shield, Wifi, Bell, Clock, Cpu, Database, AlertTriangle } from 'lucide-react'
-import ThreeScene from './ThreeScene'
-import AgentMatrix from './AgentMatrix'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, Component, lazy, Suspense } from 'react'
+import { Shield, Bell } from 'lucide-react'
+import { motion } from 'framer-motion'
 
-const Dashboard = ({ state }) => {
-    const [selectedAgent, setSelectedAgent] = useState(null)
+const ThreeSceneLazy = lazy(() =>
+    import('./ThreeScene').catch(() => ({ default: () => <AmbientGrid /> }))
+)
+
+// ── Local error boundary for the 3D scene ────────────────────
+class SceneBoundary extends Component {
+    state = { failed: false }
+    static getDerivedStateFromError() { return { failed: true } }
+    render() {
+        if (this.state.failed) {
+            return (
+                <div style={{
+                    width: '100%', height: '100%',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,20,40,0.8)', color: 'rgba(0,243,255,0.5)',
+                    fontFamily: 'monospace', fontSize: 12,
+                    gap: 8
+                }}>
+                    <Shield size={32} style={{ opacity: 0.3 }} />
+                    <span style={{ letterSpacing: '0.2em', textTransform: 'uppercase' }}>3D Render Offline</span>
+                    <span style={{ opacity: 0.5, fontSize: 10 }}>Telemetry feed active</span>
+                </div>
+            )
+        }
+        return this.props.children
+    }
+}
+
+
+
+// Inline 3D placeholder (CSS only) used when WebGL fails
+function AmbientGrid() {
+    return (
+        <div style={{
+            width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
+            background: 'radial-gradient(ellipse at 50% 40%, rgba(0,70,120,0.3) 0%, transparent 70%)',
+        }}>
+            {/* Grid lines */}
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.12 }}>
+                <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#00f3ff" strokeWidth="0.5" />
+                    </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+
+            {/* Agent orbs */}
+            {Array.from({ length: 12 }, (_, i) => {
+                const x = 10 + ((i * 73) % 80)
+                const y = 15 + ((i * 57) % 70)
+                const size = 6 + (i % 3) * 4
+                const colors = ['#00f3ff', '#ff4444', '#ffa502', '#7bed9f', '#a55eea', '#ff6b6b']
+                return (
+                    <div key={i} style={{
+                        position: 'absolute',
+                        left: `${x}%`, top: `${y}%`,
+                        width: size, height: size,
+                        borderRadius: '50%',
+                        background: colors[i % colors.length],
+                        boxShadow: `0 0 ${size * 2}px ${colors[i % colors.length]}`,
+                        animation: `agent-pulse ${2 + (i % 4)}s ease-in-out ${i * 0.3}s infinite`,
+                        transform: 'translate(-50%, -50%)',
+                    }} />
+                )
+            })}
+
+            {/* Wagon silhouette */}
+            <div style={{
+                position: 'absolute', bottom: '20%', left: '50%', transform: 'translateX(-50%)',
+                width: 280, height: 60,
+                background: 'linear-gradient(to right, transparent, rgba(0,100,180,0.2), rgba(0,180,255,0.15), rgba(0,100,180,0.2), transparent)',
+                border: '1px solid rgba(0,180,255,0.2)',
+                borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+                <span style={{ color: 'rgba(0,243,255,0.4)', fontSize: 10, fontFamily: 'monospace', letterSpacing: '0.3em' }}>
+                    WAGON TX-7842
+                </span>
+            </div>
+
+            {/* Data lines */}
+            {[20, 40, 60, 80].map(x => (
+                <div key={x} style={{
+                    position: 'absolute',
+                    left: `${x}%`, top: 0, bottom: 0,
+                    width: 1,
+                    background: 'linear-gradient(to bottom, transparent, rgba(0,243,255,0.08), transparent)',
+                    animation: `data-flow 3s ease-in-out ${x * 0.05}s infinite`,
+                }} />
+            ))}
+
+            <style>{`
+        @keyframes agent-pulse {
+          0%, 100% { opacity: 0.5; transform: translate(-50%,-50%) scale(1); }
+          50% { opacity: 1; transform: translate(-50%,-50%) scale(1.3); }
+        }
+        @keyframes data-flow {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
+        </div>
+    )
+}
+
+// ── Agent status mini-grid ────────────────────────────────────
+function AgentStatusGrid({ agents }) {
+    const safeAgents = Array.isArray(agents) ? agents : []
+    const running = safeAgents.filter(a => a?.status === 'running').length
+    const categories = [
+        { label: 'Sensory', range: [1, 10], color: '#00f3ff' },
+        { label: 'Processing', range: [11, 18], color: '#a55eea' },
+        { label: 'Inspection', range: [19, 30], color: '#ff9f43' },
+        { label: 'Prediction', range: [31, 38], color: '#ff6b6b' },
+        { label: 'Decision', range: [39, 44], color: '#2ed573' },
+        { label: 'Comms', range: [45, 50], color: '#54a0ff' },
+    ]
 
     return (
-        <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-            {/* Header */}
-            <header className="glass-shiny p-4 rounded-xl flex items-center justify-between border-b border-rail-blue/20">
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-rail-blue/10 rounded-lg flex items-center justify-center border border-rail-blue/30 relative overflow-hidden">
-                        <Shield className="text-rail-blue relative z-10" />
-                        <div className="absolute inset-0 bg-rail-blue/20 animate-pulse-slow"></div>
+        <div style={{ padding: 12, background: 'rgba(0,20,40,0.6)', borderRadius: 12, border: '1px solid rgba(0,243,255,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ color: 'rgba(0,243,255,0.8)', fontSize: 10, fontFamily: 'monospace', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+                    Agent Matrix
+                </span>
+                <span style={{ color: '#2ed573', fontSize: 10, fontFamily: 'monospace' }}>
+                    {running}/{safeAgents.length || 50} LIVE
+                </span>
+            </div>
+
+            {/* Mini dot grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 3, marginBottom: 10 }}>
+                {Array.from({ length: 50 }, (_, i) => {
+                    const num = i + 1
+                    const agent = safeAgents.find(a => a?.id === `A${num}`)
+                    const cat = categories.find(c => num >= c.range[0] && num <= c.range[1])
+                    const active = agent?.status === 'running'
+                    return (
+                        <div key={num} title={`A${num}`} style={{
+                            aspectRatio: '1', borderRadius: 2,
+                            background: active ? (cat?.color || '#00f3ff') : 'rgba(255,255,255,0.05)',
+                            boxShadow: active ? `0 0 6px ${cat?.color || '#00f3ff'}` : 'none',
+                            opacity: active ? 1 : 0.4,
+                            transition: 'all 0.5s',
+                        }} />
+                    )
+                })}
+            </div>
+
+            {/* Category legend */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                {categories.map(c => (
+                    <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: c.color, boxShadow: `0 0 4px ${c.color}` }} />
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            {c.label}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+// ── Health bars from new backend format ───────────────────────
+function HealthPanel({ health }) {
+    // health = { A19: {health_pct, bearing_id, ...}, A20: {...}, ... }
+    const safeHealth = health && typeof health === 'object' ? health : {}
+
+    // Pick bearing agent data
+    const bearingEntry = safeHealth['A19'] || {}
+    const wheelEntry = safeHealth['A20'] || {}
+    const brakeEntry = safeHealth['A22'] || {}
+    const suspEntry = safeHealth['A23'] || {}
+
+    const items = [
+        { label: 'Bearing BRG-A34', value: bearingEntry.health_pct ?? 78, unit: '%', warn: 70 },
+        { label: 'Wheel Condition', value: wheelEntry.flat_detected ? 55 : 92, unit: '%', warn: 70 },
+        { label: 'Brake Pad', value: brakeEntry.thickness_mm ? Math.min(100, (brakeEntry.thickness_mm / 30) * 100) : 65, unit: '%', warn: 40 },
+        { label: 'Suspension', value: suspEntry.damper_efficiency_pct ?? 88, unit: '%', warn: 70 },
+    ]
+
+    return (
+        <div>
+            <div style={{ color: 'rgba(0,243,255,0.7)', fontSize: 10, fontFamily: 'monospace', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 12 }}>
+                Component Health
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {items.map(item => {
+                    const val = typeof item.value === 'number' && !isNaN(item.value) ? Math.round(item.value) : 0
+                    const good = val > item.warn
+                    return (
+                        <div key={item.label}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace' }}>{item.label}</span>
+                                <span style={{ color: good ? '#2ed573' : '#ff4757', fontSize: 10, fontFamily: 'monospace' }}>{val}{item.unit}</span>
+                            </div>
+                            <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+                                <motion.div
+                                    animate={{ width: `${val}%` }}
+                                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                                    style={{
+                                        height: '100%', borderRadius: 4,
+                                        background: good
+                                            ? 'linear-gradient(to right, #00f3ff, #2ed573)'
+                                            : 'linear-gradient(to right, #ff4757, #ff9f43)',
+                                        boxShadow: good ? '0 0 8px rgba(0,243,255,0.4)' : '0 0 8px rgba(255,71,87,0.4)',
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
+// ── Main Dashboard ────────────────────────────────────────────
+export default function Dashboard({ state }) {
+    // Safely extract data with fallbacks
+    const agents = Array.isArray(state?.agents) ? state.agents : []
+    const health = (state?.health && typeof state.health === 'object') ? state.health : {}
+    const bb = (state?.blackboard && typeof state.blackboard === 'object') ? state.blackboard : {}
+
+    const runningCount = agents.filter(a => a?.status === 'running').length
+
+    const ALERTS = [
+        { type: 'critical', msg: 'Bearing #A34 — Early wear detected', time: '10:23', conf: 94 },
+        { type: 'warning', msg: 'Wheel Flat #B12 — Impact detected', time: '10:22', conf: 82 },
+        { type: 'info', msg: 'Brake pad #D03 — 15% life remaining', time: '10:18', conf: 99 },
+    ]
+
+    return (
+        <div style={{
+            width: '100%', height: '100%',
+            display: 'flex', flexDirection: 'column',
+            padding: 12, gap: 12, overflow: 'hidden',
+            background: '#050510',
+            fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+            color: 'rgba(255,255,255,0.85)',
+        }}>
+            {/* ── Header ── */}
+            <header style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 20px',
+                background: 'rgba(0,20,50,0.6)', backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(0,243,255,0.15)', borderRadius: 14,
+                flexShrink: 0,
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div style={{
+                        width: 40, height: 40, borderRadius: 10,
+                        background: 'linear-gradient(135deg, rgba(0,180,216,0.2), rgba(0,112,255,0.2))',
+                        border: '1px solid rgba(0,243,255,0.3)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <Shield size={20} style={{ color: '#00f3ff' }} />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-extrabold tracking-tighter neon-text">RAILGUARD 5000</h1>
-                        <p className="text-[10px] mono text-rail-blue/60 uppercase tracking-widest">Multi-Agent AI Predictive Maintenance</p>
+                        <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: '#00f3ff', textShadow: '0 0 20px rgba(0,243,255,0.5)', margin: 0 }}>
+                            RAILGUARD 5000
+                        </h1>
+                        <p style={{ fontSize: 9, color: 'rgba(0,243,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontFamily: 'monospace', margin: 0 }}>
+                            Multi-Agent AI Predictive Maintenance
+                        </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-6">
-                    <div className="text-right">
-                        <div className="text-[10px] text-gray-500 uppercase font-bold">Train ID</div>
-                        <div className="text-sm mono text-rail-blue">TX-7842 (PREMIUM)</div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-[10px] text-gray-400 uppercase font-bold">Route</div>
-                        <div className="text-sm mono text-rail-blue">OSLO → BERGEN</div>
-                    </div>
-                    <div className="h-8 w-px bg-rail-blue/20"></div>
-                    <div className="flex items-center gap-2">
-                        <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-gray-500 uppercase font-bold">Status</span>
-                            <span className="text-rail-green text-xs font-bold flex items-center gap-1">
-                                <Wifi size={12} /> ONLINE
-                            </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                    {[
+                        { label: 'Train ID', value: 'TX-7842 (PREMIUM)' },
+                        { label: 'Route', value: 'OSLO → BERGEN' },
+                        { label: 'Agents', value: `${runningCount}/50 LIVE` },
+                    ].map(item => (
+                        <div key={item.label} style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace' }}>{item.label}</div>
+                            <div style={{ fontSize: 12, color: '#00f3ff', fontFamily: 'monospace', fontWeight: 700 }}>{item.value}</div>
                         </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#2ed573', boxShadow: '0 0 8px #2ed573', animation: 'core-pulse 2s infinite' }} />
+                        <span style={{ fontSize: 11, color: '#2ed573', fontFamily: 'monospace', fontWeight: 700 }}>ONLINE</span>
                     </div>
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="flex-1 flex gap-4 overflow-hidden">
-                {/* Left Panel: Alerts & Logs */}
-                <aside className="w-80 flex flex-col gap-4 overflow-hidden">
-                    <div className="glass p-4 rounded-xl flex-1 flex flex-col overflow-hidden">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xs font-bold text-rail-blue uppercase tracking-widest flex items-center gap-2">
-                                <Bell size={14} /> Critical Alerts
-                            </h3>
-                            <span className="bg-rail-red/20 text-rail-red text-[10px] px-2 py-0.5 rounded-full font-bold">3 NEW</span>
-                        </div>
+            {/* ── Main content ── */}
+            <main style={{ flex: 1, display: 'flex', gap: 12, overflow: 'hidden', minHeight: 0 }}>
 
-                        <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                            {[
-                                { type: 'critical', msg: 'Bearing #A34 - Early wear detected', time: '10:23', conf: 94 },
-                                { type: 'warning', msg: 'Wheel Flat #B12 - Impact detected', time: '10:22', conf: 82 },
-                                { type: 'info', msg: 'Brake pad #D03 - 15% life remaining', time: '10:18', conf: 99 }
-                            ].map((alert, i) => (
-                                <motion.div
-                                    initial={{ x: -20, opacity: 0 }}
-                                    animate={{ x: 0, opacity: 1 }}
-                                    transition={{ delay: i * 0.1 }}
-                                    key={i}
-                                    className={`p-3 rounded-lg border flex flex-col gap-2 ${alert.type === 'critical' ? 'bg-rail-red/5 border-rail-red/20' :
-                                            alert.type === 'warning' ? 'bg-rail-amber/5 border-rail-amber/20' :
-                                                'bg-rail-blue/5 border-rail-blue/20'
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <span className={`text-[10px] font-bold uppercase ${alert.type === 'critical' ? 'text-rail-red' :
-                                                alert.type === 'warning' ? 'text-rail-amber' :
-                                                    'text-rail-blue'
-                                            }`}>{alert.type}</span>
-                                        <span className="text-[10px] text-gray-500 mono">{alert.time}</span>
-                                    </div>
-                                    <p className="text-xs font-semibold leading-tight">{alert.msg}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                                            <div className={`h-full ${alert.type === 'critical' ? 'bg-rail-red' : 'bg-rail-blue'
-                                                }`} style={{ width: `${alert.conf}%` }}></div>
+                {/* Left: Alerts */}
+                <aside style={{ width: 288, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+                    <div style={{
+                        flex: 1, overflow: 'hidden',
+                        background: 'rgba(0,20,40,0.6)', backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(0,243,255,0.1)', borderRadius: 14, padding: 14,
+                        display: 'flex', flexDirection: 'column',
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#00f3ff', fontSize: 10, fontFamily: 'monospace', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+                                <Bell size={12} /> Critical Alerts
+                            </span>
+                            <span style={{ background: 'rgba(255,71,87,0.15)', border: '1px solid rgba(255,71,87,0.3)', color: '#ff4757', fontSize: 9, padding: '2px 8px', borderRadius: 100, fontFamily: 'monospace' }}>
+                                3 NEW
+                            </span>
+                        </div>
+                        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {ALERTS.map((alert, i) => {
+                                const color = alert.type === 'critical' ? '#ff4757' : alert.type === 'warning' ? '#ffa502' : '#00f3ff'
+                                return (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ x: -16, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        transition={{ delay: i * 0.1 }}
+                                        style={{
+                                            padding: 10, borderRadius: 10,
+                                            background: `rgba(${alert.type === 'critical' ? '255,71,87' : alert.type === 'warning' ? '255,165,2' : '0,243,255'},0.05)`,
+                                            border: `1px solid rgba(${alert.type === 'critical' ? '255,71,87' : alert.type === 'warning' ? '255,165,2' : '0,243,255'},0.2)`,
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <span style={{ color, fontSize: 9, fontFamily: 'monospace', letterSpacing: '0.15em', textTransform: 'uppercase', fontWeight: 700 }}>{alert.type}</span>
+                                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: 'monospace' }}>{alert.time}</span>
                                         </div>
-                                        <span className="text-[9px] mono text-gray-400">{alert.conf}% CONF</span>
-                                    </div>
-                                </motion.div>
-                            ))}
+                                        <p style={{ fontSize: 11.5, fontWeight: 600, margin: '0 0 6px', lineHeight: 1.4 }}>{alert.msg}</p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${alert.conf}%`, background: color, borderRadius: 3 }} />
+                                            </div>
+                                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: 'monospace' }}>{alert.conf}%</span>
+                                        </div>
+                                    </motion.div>
+                                )
+                            })}
                         </div>
                     </div>
 
-                    <div className="glass p-4 rounded-xl h-48 flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xs font-bold text-rail-blue uppercase tracking-widest flex items-center gap-2">
-                                <Database size={14} /> Data Flow
-                            </h3>
+                    {/* Data flow */}
+                    <div style={{
+                        height: 90, background: 'rgba(0,20,40,0.6)',
+                        border: '1px solid rgba(0,243,255,0.1)', borderRadius: 14,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, flexShrink: 0,
+                    }}>
+                        <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'monospace', color: '#00f3ff' }}>
+                            48.2 <span style={{ fontSize: 11, opacity: 0.6 }}>MB/s</span>
                         </div>
-                        <div className="flex-1 relative flex items-center justify-center">
-                            <div className="absolute inset-0 bg-rail-blue/5 rounded-lg border border-rail-blue/10 animate-pulse"></div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold mono text-rail-blue">48.2 <span className="text-xs uppercase">MB/s</span></div>
-                                <div className="text-[9px] uppercase tracking-tighter text-gray-500">Processing Stream</div>
-                            </div>
-                        </div>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.2em', fontFamily: 'monospace' }}>Processing Stream</div>
                     </div>
                 </aside>
 
-                {/* Center Panel: 3D Scene */}
-                <section className="flex-1 relative glass rounded-2xl overflow-hidden border border-rail-blue/10">
-                    <div className="absolute inset-0 z-0">
-                        <ThreeScene bearings={state.health?.bearings || []} />
+                {/* Center: 3D scene (wrapped in error boundary) */}
+                <section style={{
+                    flex: 1, position: 'relative', overflow: 'hidden',
+                    background: 'rgba(0,10,30,0.8)',
+                    border: '1px solid rgba(0,100,200,0.15)', borderRadius: 18,
+                }}>
+                    <SceneBoundary>
+                        <Suspense fallback={<AmbientGrid />}>
+                            <ThreeSceneLazy health={health} />
+                        </Suspense>
+                    </SceneBoundary>
+
+                    {/* Overlay HUD */}
+                    <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 5, pointerEvents: 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(0,243,255,0.15)' }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#2ed573', animation: 'core-pulse 2s infinite' }} />
+                            <span style={{ fontSize: 9, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>Live Telemetry</span>
+                        </div>
+                        <div style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(0,243,255,0.1)' }}>
+                            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'monospace' }}>Speed</div>
+                            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace', color: '#00f3ff', lineHeight: 1 }}>
+                                124 <span style={{ fontSize: 9, opacity: 0.6 }}>KM/H</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
-                        <div className="glass p-3 rounded-lg flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full bg-rail-green animate-pulse"></div>
-                            <span className="text-[10px] font-bold tracking-widest uppercase">Live Telemetry</span>
-                        </div>
-                        <div className="glass p-2 rounded-lg flex flex-col gap-1">
-                            <div className="text-[8px] text-gray-500 uppercase font-bold">Speed</div>
-                            <div className="text-lg mono font-bold text-rail-blue leading-none">124 <span className="text-[10px] font-normal">KM/H</span></div>
-                        </div>
-                    </div>
-
-                    {/* Controller */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-2xl flex gap-8 border border-rail-blue/30 backdrop-blur-2xl">
-                        {['Bogie 1', 'Axle 1', 'Bearings', 'Brakes', 'Chassis'].map((comp, i) => (
-                            <button key={i} className="text-[10px] uppercase font-bold tracking-[0.2em] text-gray-400 hover:text-rail-blue transition-colors">
-                                {comp}
+                    {/* Bottom nav */}
+                    <div style={{
+                        position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                        display: 'flex', gap: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)',
+                        padding: '8px 24px', borderRadius: 100, border: '1px solid rgba(0,243,255,0.15)',
+                        zIndex: 5,
+                    }}>
+                        {['Bogie 1', 'Axle 1', 'Bearings', 'Brakes', 'Chassis'].map(c => (
+                            <button key={c} style={{ fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 700, color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'monospace' }}>
+                                {c}
                             </button>
                         ))}
                     </div>
-
-                    {/* Compass / Orientation */}
-                    <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full border border-rail-blue/20 flex items-center justify-center glass">
-                        <div className="text-[8px] mono text-rail-blue/40 absolute -top-1">FRONT</div>
-                        <Shield size={20} className="text-rail-blue/20 rotate-45" />
-                    </div>
                 </section>
 
-                {/* Right Panel: Agents & Stats */}
-                <aside className="w-80 flex flex-col gap-4 overflow-hidden">
-                    <AgentMatrix agents={state.agents || []} onSelect={setSelectedAgent} />
+                {/* Right: Agent grid + health */}
+                <aside style={{ width: 288, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0, overflow: 'hidden' }}>
+                    <AgentStatusGrid agents={agents} />
 
-                    <div className="glass p-4 rounded-xl flex-1 flex flex-col gap-4 overflow-hidden">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-xs font-bold text-rail-blue uppercase tracking-widest flex items-center gap-2">
-                                <Activity size={14} /> Diagnostics
-                            </h3>
-                        </div>
+                    <div style={{
+                        flex: 1, overflow: 'auto',
+                        background: 'rgba(0,20,40,0.6)', backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(0,243,255,0.1)', borderRadius: 14, padding: 14,
+                    }}>
+                        <HealthPanel health={health} />
 
-                        <div className="space-y-4">
-                            {state.health?.bearings?.slice(0, 4).map((b, i) => (
-                                <div key={i} className="flex flex-col gap-1">
-                                    <div className="flex justify-between text-[10px] mono">
-                                        <span className="text-gray-400">{b.bearing_id}</span>
-                                        <span className={b.health > 70 ? 'text-rail-green' : 'text-rail-red'}>{b.health}%</span>
-                                    </div>
-                                    <div className="w-full h-1 bg-gray-900 rounded-full overflow-hidden">
-                                        <motion.div
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${b.health}%` }}
-                                            className={`h-full ${b.health > 70 ? 'bg-rail-green' : 'bg-rail-red'}`}
-                                        />
-                                    </div>
+                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(0,243,255,0.08)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            {[
+                                { label: 'Compute', value: '24%' },
+                                { label: 'Latency', value: '14ms' },
+                                { label: 'Uptime', value: '99.9%' },
+                                { label: 'Alerts', value: '3 NEW' },
+                            ].map(s => (
+                                <div key={s.label} style={{ padding: 8, background: 'rgba(0,243,255,0.04)', border: '1px solid rgba(0,243,255,0.08)', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'monospace', marginBottom: 2 }}>{s.label}</div>
+                                    <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: '#00f3ff' }}>{s.value}</div>
                                 </div>
                             ))}
-                        </div>
-
-                        <div className="mt-auto pt-4 border-t border-rail-blue/10">
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="p-2 bg-rail-blue/5 rounded-lg border border-rail-blue/10">
-                                    <div className="text-[8px] text-gray-500 uppercase mb-1">Compute Load</div>
-                                    <div className="text-sm mono font-bold text-rail-blue">24%</div>
-                                </div>
-                                <div className="p-2 bg-rail-blue/5 rounded-lg border border-rail-blue/10">
-                                    <div className="text-[8px] text-gray-500 uppercase mb-1">Latency</div>
-                                    <div className="text-sm mono font-bold text-rail-blue">14ms</div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </aside>
             </main>
 
-            {/* Footer Info */}
-            <footer className="h-6 flex items-center justify-between px-2 text-[8px] mono text-gray-600 uppercase tracking-widest">
-                <div className="flex items-center gap-4">
+            {/* Footer */}
+            <footer style={{
+                flexShrink: 0, height: 24,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                paddingInline: 8, fontSize: 8, fontFamily: 'monospace',
+                color: 'rgba(255,255,255,0.2)', letterSpacing: '0.15em', textTransform: 'uppercase',
+            }}>
+                <div style={{ display: 'flex', gap: 16 }}>
                     <span>ENC: AES-256-GCM</span>
                     <span>MESH: 50 NODES ACTIVE</span>
                 </div>
-                <div className="flex items-center gap-4">
+                <div style={{ display: 'flex', gap: 16 }}>
                     <span>LAT: 59.9139° N</span>
                     <span>LON: 10.7522° E</span>
-                    <span className="text-rail-blue">© 2050 RAILGUARD INDUSTRIES</span>
+                    <span style={{ color: 'rgba(0,243,255,0.4)' }}>© 2050 RAILGUARD INDUSTRIES</span>
                 </div>
             </footer>
+
+            <style>{`
+        @keyframes core-pulse {
+          0%, 100% { opacity: 0.8; } 50% { opacity: 1; }
+        }
+      `}</style>
         </div>
     )
 }
 
-export default Dashboard

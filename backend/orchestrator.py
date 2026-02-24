@@ -1,49 +1,36 @@
+"""
+RailGuard 5000 — Orchestrator
+Starts all 50 agents and keeps them running forever with auto-restart.
+"""
 import asyncio
 import logging
-from typing import List
-from agents.base_agent import BaseAgent
-from backend.blackboard import Blackboard
+
+logger = logging.getLogger("Orchestrator")
+
 
 class Orchestrator:
-    """
-    Manages the lifecycle of all 50 agents.
-    Handles startup, shutdown, and health monitoring.
-    """
-    def __init__(self, blackboard: Blackboard):
+    def __init__(self, blackboard):
         self.blackboard = blackboard
-        self.agents: List[BaseAgent] = []
-        self.tasks = []
-        self.logger = logging.getLogger("Orchestrator")
+        self.agents = []
 
-    def register_agent(self, agent: BaseAgent):
+    def register_agent(self, agent):
         self.agents.append(agent)
-        self.logger.info(f"Registered agent: {agent.name} ({agent.agent_id})")
 
     async def start_all(self):
-        self.logger.info("Starting all agents...")
+        logger.info(f"Starting {len(self.agents)} agents...")
         for agent in self.agents:
-            task = asyncio.create_task(agent.run())
-            self.tasks.append(task)
-        
-        # Self-healing monitor (Agent A50 concept)
-        asyncio.create_task(self.monitor_health())
+            asyncio.create_task(self._run_forever(agent))
 
-    async def monitor_health(self):
+    async def _run_forever(self, agent):
+        """Run an agent, restarting it automatically if it ever crashes."""
+        agent.status = "running"
         while True:
-            # Check for failed tasks/agents
-            for i, task in enumerate(self.tasks):
-                if task.done():
-                    try:
-                        task.result()
-                    except Exception as e:
-                        agent = self.agents[i]
-                        self.logger.error(f"Agent {agent.agent_id} failed: {e}. Restarting...")
-                        self.tasks[i] = asyncio.create_task(agent.run())
-            
-            await asyncio.sleep(5)
-
-    async def stop_all(self):
-        self.logger.info("Stopping all agents...")
-        for task in self.tasks:
-            task.cancel()
-        await asyncio.gather(*self.tasks, return_exceptions=True)
+            try:
+                await agent.run(self.blackboard)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Agent {agent.agent_id} crashed: {e}. Restarting in 2s.")
+                agent.status = "restarting"
+                await asyncio.sleep(2)
+                agent.status = "running"
