@@ -141,15 +141,16 @@ class ChatbotEngine:
             return "Goodbye! Stay safe on the tracks."
 
         # Owner Details
-        if "owner" in q or "who developed" in q or "who is the owner" in q:
-            if "phone" in q: return f"The owner's phone number is {OWNER_INFO['phone']}."
+        owner_keywords = ["owner", "developed", "creator", "mastermind", "varun", "penjendru"]
+        if any(x in q for x in owner_keywords) or any(x in q for x in ["phone", "email", "college", "dept", "department"]):
+            if "phone" in q or "number" in q: return f"The owner's phone number is {OWNER_INFO['phone']}."
             if "email" in q or "id" in q: return f"The owner's email ID is {OWNER_INFO['email']}."
             if "college" in q: return f"The owner studies at {OWNER_INFO['college']}."
             if "dept" in q or "department" in q or "study" in q: return f"The owner is studying {OWNER_INFO['department']}."
-            return f"The owner and developer of this system is {OWNER_INFO['name']}."
+            if any(x in q for x in owner_keywords):
+                return f"The owner and developer of this system is {OWNER_INFO['name']}."
         
-        # Specific owner keywords
-        if "varun" in q: return f"Yes, Penjendru Varun is the mastermind behind RailGuard 5000."
+        # Specific institution
         if "rmkcet" in q: return f"RMKCET is the institution where the owner, Penjendru Varun, is pursuing his studies."
 
         return None
@@ -200,7 +201,7 @@ class ChatbotEngine:
             aid = f"A{match.group(1)}"
             if aid in AGENT_CAPS: return await self._agent_detail_report(aid, data.get(aid, {}))
 
-        return "I am not supposed to answer such questions. Please ask about the 50 agents or the system owner."
+        return "iam not supposed to answer such questions"
 
     def _handle_complex_storm(self, q: str, data: dict) -> str:
         passengers = "840" if "840" in q else "the current"
